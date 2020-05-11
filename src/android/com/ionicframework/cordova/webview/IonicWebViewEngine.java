@@ -4,11 +4,12 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
-import android.annotation.TargetApi;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
+import android.webkit.ServiceWorkerController;
+import android.webkit.ServiceWorkerClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
@@ -79,6 +80,19 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     if (!isDeployDisabled() && !isNewBinary() && path != null && !path.isEmpty()) {
       setServerBasePath(path);
     }
+
+    boolean setAsServiceWorkerClient = preferences.getBoolean("ResolveServiceWorkerRequests", false);
+    ServiceWorkerController controller = null;
+
+    if (setAsServiceWorkerClient && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+        controller = ServiceWorkerController.getInstance();
+        controller.setServiceWorkerClient(new ServiceWorkerClient(){
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebResourceRequest request) {
+                return localServer.shouldInterceptRequest(request.getUrl(), request);
+            }
+        });
+    }
   }
 
   private boolean isNewBinary() {
@@ -121,12 +135,6 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
       return localServer.shouldInterceptRequest(request.getUrl(), request);
-    }
-
-    @TargetApi(Build.VERSION_CODES.KITKAT)
-    @Override
-    public WebResourceResponse shouldInterceptRequest(WebView view, String url) {
-      return localServer.shouldInterceptRequest(Uri.parse(url), null);
     }
 
     @Override
