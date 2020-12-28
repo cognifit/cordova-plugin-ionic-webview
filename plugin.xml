@@ -20,11 +20,14 @@
 -->
 
 <plugin xmlns="http://apache.org/cordova/ns/plugins/1.0" xmlns:rim="http://www.blackberry.com/ns/widgets" xmlns:android="http://schemas.android.com/apk/res/android" id="cordova-plugin-ionic-webview" version="4.2.1">
-    <name>cordova-plugin-ionic-webview</name>
-    <description>Ionic Web View Engine Plugin</description>
+    <name>CogniFit's fork of cordova-plugin-ionic-webview</name>
+    <description>
+    	Ionic Web View Engine Plugin
+    	See original project at: https://github.com/ionic-team/cordova-plugin-ionic-webview	
+    </description>
     <license>Apache-2.0</license>
     <keywords>cordova,wkwebview</keywords>
-    <repo>https://github.com/ionic-team/cordova-plugin-ionic-webview</repo>
+    <repo>https://github.com/cognifit/cordova-plugin-ionic-webview</repo>
 
 	<engines>
         <engine name="cordova" version=">=7.1.0"/>
