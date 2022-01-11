@@ -13,6 +13,8 @@
     if (self) {
         _basePath = basePath;
         _scheme = scheme;
+        _serialQueue = dispatch_queue_create("com.cognifit.assets.serial.queue", DISPATCH_QUEUE_SERIAL);
+        _shouldSerialize = false;
     }
     return self;
 }
@@ -58,10 +60,21 @@
         response = [[NSHTTPURLResponse alloc] initWithURL:localUrl statusCode:statusCode HTTPVersion:nil headerFields:headers];
     }
     
-    [urlSchemeTask didReceiveResponse:response];
-    [urlSchemeTask didReceiveData:data];
-    [urlSchemeTask didFinish];
-
+    _shouldSerialize = _pathToSerialize != nil && [url.path containsString:_pathToSerialize];
+    
+    if (_shouldSerialize) {
+        dispatch_async(_serialQueue, ^{
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [urlSchemeTask didReceiveResponse:response];
+                [urlSchemeTask didReceiveData:data];
+                [urlSchemeTask didFinish];
+            });
+        });
+    } else {
+        [urlSchemeTask didReceiveResponse:response];
+        [urlSchemeTask didReceiveData:data];
+        [urlSchemeTask didFinish];
+    }
 }
 
 - (void)webView:(nonnull WKWebView *)webView stopURLSchemeTask:(nonnull id<WKURLSchemeTask>)urlSchemeTask
