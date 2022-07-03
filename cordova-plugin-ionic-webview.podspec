@@ -1,5 +1,5 @@
 Pod::Spec.new do |s|
-  s.name             = 'cordova-plugin-ionic-webview'
+  s.name             = 'cognifit-cordova-plugin-ionic-webview'
   s.version          = '5.0.0'
   s.summary          = 'The Web View plugin for Cordova that is specialized for Ionic apps.\n\nThis project use WKWebView (IOS) and some improvements for Webview (Android)'
   s.description      = <<-DESC
