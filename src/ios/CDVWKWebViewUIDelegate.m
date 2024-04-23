@@ -120,4 +120,10 @@
     [rootController presentViewController:alert animated:YES completion:nil];
 }
 
+- (void)webView:(WKWebView *)webView requestMediaCapturePermissionForOrigin:(WKSecurityOrigin *)origin initiatedByFrame:(WKFrameInfo *)frame type:(WKMediaCaptureType)type decisionHandler:(void (^)(WKPermissionDecision))decisionHandler API_AVAILABLE(ios(15.0)){
+    
+    // on iOS 15 or later this delegate method will allow the record audio permission to persist (basically to use whatever the user has granted the App itself
+    decisionHandler(WKPermissionDecisionGrant);
+}
+
 @end
