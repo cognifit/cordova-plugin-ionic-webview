@@ -79,6 +79,7 @@
 
 @end
 
+static NSString *_wwwFolderName = @"www";
 
 @interface CDVWKWeakScriptMessageHandler : NSObject <WKScriptMessageHandler>
 
@@ -123,6 +124,7 @@
         }
         // add to keyWindow to ensure it is 'active'
         [UIApplication.sharedApplication.keyWindow addSubview:self.engineWebView];
+        _wwwFolderName = [[NSUserDefaults standardUserDefaults] stringForKey:@"wwwFolderName"] ?: @"www";
 
         self.frame = frame;
     }
@@ -130,7 +132,7 @@
 }
 
 -(NSString *) getStartPath {
-    NSString * wwwPath = [[NSBundle mainBundle] pathForResource:@"www" ofType: nil];
+    NSString * wwwPath = [[NSBundle mainBundle] pathForResource:_wwwFolderName ofType: nil];
 
     NSUserDefaults* userDefaults = [NSUserDefaults standardUserDefaults];
     NSString * persistedPath = [userDefaults objectForKey:CDV_SERVER_PATH];

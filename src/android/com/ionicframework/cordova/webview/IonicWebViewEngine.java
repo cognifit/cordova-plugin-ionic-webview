@@ -29,7 +29,7 @@ import org.apache.cordova.engine.SystemWebView;
 public class IonicWebViewEngine extends SystemWebViewEngine {
   public static final String TAG = "IonicWebViewEngine";
 
-  private WebViewLocalServer localServer;
+  public WebViewLocalServer localServer;
   private String CDV_LOCAL_SERVER;
   private String scheme;
   private static final String LAST_BINARY_VERSION_CODE = "lastBinaryVersionCode";
@@ -65,7 +65,9 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     CDV_LOCAL_SERVER = scheme + "://" + hostname;
 
     localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme);
-    localServer.hostAssets("www");
+    SharedPreferences appPrefs = cordova.getActivity().getApplicationContext().getSharedPreferences(IonicWebView.WEBVIEW_PREFS_NAME, Context.MODE_PRIVATE);
+    String folderName = appPrefs.getString("wwwFolderName", "www");  // "www" is the default
+    localServer.hostAssets(folderName);
 
     webView.setWebViewClient(new ServerClient(this, parser));
 
