@@ -124,7 +124,17 @@ static NSString *_wwwFolderName = @"www";
         }
         // add to keyWindow to ensure it is 'active'
         [UIApplication.sharedApplication.keyWindow addSubview:self.engineWebView];
-        _wwwFolderName = [[NSUserDefaults standardUserDefaults] stringForKey:@"wwwFolderName"] ?: @"www";
+        
+        // load alternative web App, if it exists
+        NSString *folderName = [[NSUserDefaults standardUserDefaults] stringForKey:@"wwwFolderName"] ?: @"www";
+        NSString *path = [[NSBundle mainBundle] pathForResource:folderName ofType:nil];
+        BOOL isDir = NO;
+        BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDir];
+        if (!exists || !isDir) {
+            // Fallback: folder doesn't exist, reset to "www"
+            folderName = @"www";
+        }
+        _wwwFolderName = folderName;
 
         self.frame = frame;
     }

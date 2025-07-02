@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Build;
@@ -67,6 +68,19 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme);
     SharedPreferences appPrefs = cordova.getActivity().getApplicationContext().getSharedPreferences(IonicWebView.WEBVIEW_PREFS_NAME, Context.MODE_PRIVATE);
     String folderName = appPrefs.getString("wwwFolderName", "www");  // "www" is the default
+
+    AssetManager assetManager = cordova.getActivity().getApplicationContext().getAssets();
+    try {
+      String[] files = assetManager.list(folderName);
+      if (files == null || files.length == 0) {
+        // Folder not found or empty — fallback to "www"
+        folderName = "www";
+      }
+    } catch (Exception e) {
+      // Folder doesn't exist — fallback
+      folderName = "www";
+    }
+
     localServer.hostAssets(folderName);
 
     webView.setWebViewClient(new ServerClient(this, parser));
