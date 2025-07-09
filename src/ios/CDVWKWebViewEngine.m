@@ -127,6 +127,7 @@ static NSString *_wwwFolderName = @"www";
         
         // load alternative web App, if it exists
         NSString *folderName = [[NSUserDefaults standardUserDefaults] stringForKey:@"wwwFolderName"] ?: @"www";
+        BOOL isFolderNamePermanent = [[NSUserDefaults standardUserDefaults] boolForKey:@"isWwwFolderNamePermanent"];
         NSString *path = [[NSBundle mainBundle] pathForResource:folderName ofType:nil];
         BOOL isDir = NO;
         BOOL exists = [[NSFileManager defaultManager] fileExistsAtPath:path isDirectory:&isDir];
@@ -135,6 +136,12 @@ static NSString *_wwwFolderName = @"www";
             folderName = @"www";
         }
         _wwwFolderName = folderName;
+      
+        if (!isFolderNamePermanent) {
+            [[NSUserDefaults standardUserDefaults] setObject:@"www" forKey:@"wwwFolderName"];
+            [[NSUserDefaults standardUserDefaults] setBool:true forKey:@"isWwwFolderNamePermanent"];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+        }
 
         self.frame = frame;
     }
