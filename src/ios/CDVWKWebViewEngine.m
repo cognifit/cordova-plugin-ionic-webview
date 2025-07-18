@@ -115,6 +115,10 @@ static NSString *_wwwFolderName = @"www";
 
 @synthesize engineWebView = _engineWebView;
 
++ (void)overrideWwwFolderName:(NSString *)wwwFolderName {
+	_wwwFolderName = wwwFolderName;
+}
+
 - (instancetype)initWithFrame:(CGRect)frame
 {
     self = [super init];
