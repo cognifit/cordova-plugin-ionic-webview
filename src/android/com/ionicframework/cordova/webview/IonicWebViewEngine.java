@@ -27,6 +27,14 @@ import org.apache.cordova.engine.SystemWebViewClient;
 import org.apache.cordova.engine.SystemWebViewEngine;
 import org.apache.cordova.engine.SystemWebView;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
 public class IonicWebViewEngine extends SystemWebViewEngine {
   public static final String TAG = "IonicWebViewEngine";
 
@@ -35,6 +43,9 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
   private String scheme;
   private static final String LAST_BINARY_VERSION_CODE = "lastBinaryVersionCode";
   private static final String LAST_BINARY_VERSION_NAME = "lastBinaryVersionName";
+  private Method prefetchResourceMethod;
+  private Class<?> prefetchResourceParameterType;
+  private boolean prefetchMethodResolved;
 
   /**
    * Used when created via reflection.
@@ -65,7 +76,12 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     scheme = preferences.getString("Scheme", "http");
     CDV_LOCAL_SERVER = scheme + "://" + hostname;
 
-    localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme);
+    boolean cacheRiveAssetsInMemory = preferences.getBoolean("CacheRiveAssetsInMemory", false);
+    Set<String> memoryCachedExtensions = parseMemoryCachedExtensions(
+            preferences.getString("MemoryCachedAssetExtensions", null), cacheRiveAssetsInMemory);
+    List<String> resourcesToPrefetch = parsePrefetchResources(preferences.getString("PrefetchResources", null));
+
+    localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme, memoryCachedExtensions);
     SharedPreferences appPrefs = cordova.getActivity().getApplicationContext().getSharedPreferences(IonicWebView.WEBVIEW_PREFS_NAME, Context.MODE_PRIVATE);
     String folderName = appPrefs.getString("wwwFolderName", "www");  // "www" is the default
 
@@ -84,6 +100,8 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     localServer.hostAssets(folderName);
 
     webView.setWebViewClient(new ServerClient(this, parser));
+
+    prefetchConfiguredResources(resourcesToPrefetch);
 
     super.init(parentWebView, cordova, client, resourceApi, pluginManager, nativeToJsMessageQueue);
     if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -139,6 +157,143 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
 
   private boolean isDeployDisabled() {
     return preferences.getBoolean("DisableDeploy", false);
+  }
+
+  private Set<String> parseMemoryCachedExtensions(String rawPreference, boolean cacheRiveAssetsInMemory) {
+    if ((rawPreference == null || rawPreference.trim().isEmpty()) && !cacheRiveAssetsInMemory) {
+      return Collections.<String>emptySet();
+    }
+
+    LinkedHashSet<String> normalized = new LinkedHashSet<String>();
+    if (cacheRiveAssetsInMemory) {
+      normalized.add(".riv");
+    }
+
+    if (rawPreference != null) {
+      String prepared = rawPreference.replace("\n", ",").replace(";", ",");
+      String[] segments = prepared.split(",");
+      for (String segment : segments) {
+        if (segment == null) {
+          continue;
+        }
+        String trimmed = segment.trim();
+        if (trimmed.isEmpty()) {
+          continue;
+        }
+        if (!trimmed.startsWith(".")) {
+          trimmed = "." + trimmed;
+        }
+        normalized.add(trimmed.toLowerCase(Locale.ROOT));
+      }
+    }
+
+    if (normalized.isEmpty()) {
+      return Collections.<String>emptySet();
+    }
+
+    return Collections.unmodifiableSet(normalized);
+  }
+
+  private List<String> parsePrefetchResources(String rawPreference) {
+    if (rawPreference == null || rawPreference.trim().isEmpty()) {
+      return Collections.<String>emptyList();
+    }
+
+    ArrayList<String> resources = new ArrayList<String>();
+    String prepared = rawPreference.replace("\n", ",").replace(";", ",");
+    String[] segments = prepared.split(",");
+    for (String segment : segments) {
+      if (segment == null) {
+        continue;
+      }
+      String trimmed = segment.trim();
+      if (!trimmed.isEmpty()) {
+        resources.add(trimmed);
+      }
+    }
+    return Collections.unmodifiableList(resources);
+  }
+
+  private void prefetchConfiguredResources(List<String> resources) {
+    if (resources == null || resources.isEmpty()) {
+      return;
+    }
+
+    for (String resource : resources) {
+      String targetUrl = buildPrefetchTargetUrl(resource);
+      if (targetUrl == null) {
+        continue;
+      }
+      invokePrefetchResource(targetUrl);
+    }
+  }
+
+  private String buildPrefetchTargetUrl(String resource) {
+    if (resource == null) {
+      return null;
+    }
+    String trimmed = resource.trim();
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed;
+    }
+    if (CDV_LOCAL_SERVER == null || CDV_LOCAL_SERVER.isEmpty()) {
+      return null;
+    }
+    while (trimmed.startsWith("/")) {
+      trimmed = trimmed.substring(1);
+    }
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    return CDV_LOCAL_SERVER + "/" + trimmed;
+  }
+
+  private void resolvePrefetchMethod() {
+    if (prefetchMethodResolved) {
+      return;
+    }
+    prefetchMethodResolved = true;
+    Method[] methods = WebView.class.getMethods();
+    for (Method method : methods) {
+      if (method == null) {
+        continue;
+      }
+      if (!"prefetchResource".equals(method.getName())) {
+        continue;
+      }
+      Class<?>[] parameterTypes = method.getParameterTypes();
+      if (parameterTypes == null || parameterTypes.length != 1) {
+        continue;
+      }
+      prefetchResourceMethod = method;
+      prefetchResourceParameterType = parameterTypes[0];
+      break;
+    }
+  }
+
+  private void invokePrefetchResource(String url) {
+    if (url == null || url.trim().isEmpty()) {
+      return;
+    }
+    resolvePrefetchMethod();
+    if (prefetchResourceMethod == null || prefetchResourceParameterType == null) {
+      Log.d(TAG, "prefetchResource API not available; skipping prefetch for " + url);
+      return;
+    }
+    try {
+      if (String.class.equals(prefetchResourceParameterType)) {
+        prefetchResourceMethod.invoke(webView, url);
+      } else if (Uri.class.equals(prefetchResourceParameterType)) {
+        prefetchResourceMethod.invoke(webView, Uri.parse(url));
+      } else {
+        Log.d(TAG, "Unsupported prefetchResource parameter type: " + prefetchResourceParameterType.getName());
+      }
+    } catch (Exception ex) {
+      Log.w(TAG, "Unable to prefetch resource " + url, ex);
+    }
   }
   private class ServerClient extends SystemWebViewClient {
     private ConfigXmlParser parser;
