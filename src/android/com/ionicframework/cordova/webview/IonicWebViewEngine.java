@@ -39,6 +39,8 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
   private String scheme;
   private static final String LAST_BINARY_VERSION_CODE = "lastBinaryVersionCode";
   private static final String LAST_BINARY_VERSION_NAME = "lastBinaryVersionName";
+  private Class<?> prefetchResourceParameterType;
+  private boolean prefetchMethodResolved;
 
   /**
    * Used when created via reflection.
