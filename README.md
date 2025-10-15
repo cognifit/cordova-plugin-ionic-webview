@@ -95,6 +95,45 @@ Default value is `0` (`MIXED_CONTENT_ALWAYS_ALLOW`), which allows loading resour
 Other possible values are `1` (`MIXED_CONTENT_NEVER_ALLOW`) and `2` (`MIXED_CONTENT_COMPATIBILITY_MODE`)
 
 
+#### CacheRiveAssetsInMemory
+
+```xml
+<preference name="CacheRiveAssetsInMemory" value="true" />
+```
+
+Default value is `false`.
+
+When enabled, `.riv` animation files requested through the local asset server are cached in memory to avoid repeated extraction
+work. This is useful for apps that replay the same Rive animations frequently and want to minimise disk IO.
+
+#### MemoryCachedAssetExtensions
+
+```xml
+<preference name="MemoryCachedAssetExtensions" value=".riv,.wasm" />
+```
+
+Default value is empty.
+
+Provides fine-grained control over which local asset extensions should be cached in memory. The list is comma, semicolon or
+newline separated and is combined with `CacheRiveAssetsInMemory`. Entries may omit the dot (e.g. `riv`), but will always be
+treated case-insensitively. When using this preference you can include additional file types such as `.wasm` to keep their
+contents ready for repeated loads.
+
+#### PrefetchResources
+
+```xml
+<preference name="PrefetchResources" value="build/rive.wasm, animations/intro.riv" />
+```
+
+Default value is empty.
+
+Defines a list of URLs that should be warmed as soon as the WebView initialises. Relative paths are resolved against the Cordova
+local server origin (for example `http://localhost`). Because the standard Android WebView does not expose a public prefetch API,
+the plugin touches matching local asset URLs instead, ensuring that any configured in-memory caches (for example `.riv` or `.wasm`
+files) are populated before the first request from the web layer. Remote HTTP(S) entries are ignored at the moment because the
+plugin cannot prefetch them without a dedicated networking stack.
+
+
 [Android documentation](https://developer.android.com/reference/android/webkit/WebSettings.html#setMixedContentMode(int))
 
 

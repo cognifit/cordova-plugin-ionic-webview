@@ -30,8 +30,10 @@ import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -164,12 +166,21 @@ public class WebViewLocalServer {
   }
 
   WebViewLocalServer(Context context, String authority, boolean html5mode, ConfigXmlParser parser, String customScheme) {
+    this(context, authority, html5mode, parser, customScheme, Collections.<String>emptySet());
+  }
+
+  WebViewLocalServer(Context context, String authority, boolean html5mode, ConfigXmlParser parser, String customScheme,
+                     Set<String> memoryCachedAssetExtensions) {
     uriMatcher = new UriMatcher(null);
     this.html5mode = html5mode;
     this.parser = parser;
-    this.protocolHandler = new AndroidProtocolHandler(context.getApplicationContext());
     this.authority = authority;
     this.customScheme = customScheme;
+    Set<String> cachedExtensions = memoryCachedAssetExtensions;
+    if (cachedExtensions == null) {
+      cachedExtensions = Collections.<String>emptySet();
+    }
+    this.protocolHandler = new AndroidProtocolHandler(context.getApplicationContext(), cachedExtensions);
   }
 
   private static Uri parseAndVerifyUrl(String url) {
@@ -229,6 +240,36 @@ public class WebViewLocalServer {
     } else {
       return handleProxyRequest(uri, handler);
     }
+  }
+
+  public boolean prefetch(Uri uri) {
+    if (uri == null) {
+      return false;
+    }
+
+    String authority = uri.getAuthority();
+    if (authority == null || !authority.equals(this.authority)) {
+      return false;
+    }
+
+    String path = uri.getPath();
+    if (path == null || path.length() == 0) {
+      return false;
+    }
+
+    if (path.startsWith(contentStart) || path.startsWith(fileStart)) {
+      return false;
+    }
+
+    if (!isAsset || basePath == null) {
+      return false;
+    }
+
+    String normalizedPath = path;
+    if (!normalizedPath.startsWith("/")) {
+      normalizedPath = "/" + normalizedPath;
+    }
+    return protocolHandler.prefetchAsset(basePath + normalizedPath);
   }
 
   private boolean isLocalFile(Uri uri) {

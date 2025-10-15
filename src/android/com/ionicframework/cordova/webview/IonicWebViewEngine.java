@@ -27,6 +27,13 @@ import org.apache.cordova.engine.SystemWebViewClient;
 import org.apache.cordova.engine.SystemWebViewEngine;
 import org.apache.cordova.engine.SystemWebView;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
 public class IonicWebViewEngine extends SystemWebViewEngine {
   public static final String TAG = "IonicWebViewEngine";
 
@@ -65,7 +72,12 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     scheme = preferences.getString("Scheme", "http");
     CDV_LOCAL_SERVER = scheme + "://" + hostname;
 
-    localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme);
+    boolean cacheRiveAssetsInMemory = preferences.getBoolean("CacheRiveAssetsInMemory", false);
+    Set<String> memoryCachedExtensions = parseMemoryCachedExtensions(
+            preferences.getString("MemoryCachedAssetExtensions", null), cacheRiveAssetsInMemory);
+    List<String> resourcesToPrefetch = parsePrefetchResources(preferences.getString("PrefetchResources", null));
+
+    localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme, memoryCachedExtensions);
     SharedPreferences appPrefs = cordova.getActivity().getApplicationContext().getSharedPreferences(IonicWebView.WEBVIEW_PREFS_NAME, Context.MODE_PRIVATE);
     String folderName = appPrefs.getString("wwwFolderName", "www");  // "www" is the default
 
@@ -84,6 +96,8 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     localServer.hostAssets(folderName);
 
     webView.setWebViewClient(new ServerClient(this, parser));
+
+    prefetchConfiguredResources(resourcesToPrefetch, cordova);
 
     super.init(parentWebView, cordova, client, resourceApi, pluginManager, nativeToJsMessageQueue);
     if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -139,6 +153,143 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
 
   private boolean isDeployDisabled() {
     return preferences.getBoolean("DisableDeploy", false);
+  }
+
+  private Set<String> parseMemoryCachedExtensions(String rawPreference, boolean cacheRiveAssetsInMemory) {
+    if ((rawPreference == null || rawPreference.trim().isEmpty()) && !cacheRiveAssetsInMemory) {
+      return Collections.<String>emptySet();
+    }
+
+    LinkedHashSet<String> normalized = new LinkedHashSet<String>();
+    if (cacheRiveAssetsInMemory) {
+      normalized.add(".riv");
+    }
+
+    if (rawPreference != null) {
+      String prepared = rawPreference.replace("\n", ",").replace(";", ",");
+      String[] segments = prepared.split(",");
+      for (String segment : segments) {
+        if (segment == null) {
+          continue;
+        }
+        String trimmed = segment.trim();
+        if (trimmed.isEmpty()) {
+          continue;
+        }
+        if (!trimmed.startsWith(".")) {
+          trimmed = "." + trimmed;
+        }
+        normalized.add(trimmed.toLowerCase(Locale.ROOT));
+      }
+    }
+
+    if (normalized.isEmpty()) {
+      return Collections.<String>emptySet();
+    }
+
+    return Collections.unmodifiableSet(normalized);
+  }
+
+  private List<String> parsePrefetchResources(String rawPreference) {
+    if (rawPreference == null || rawPreference.trim().isEmpty()) {
+      return Collections.<String>emptyList();
+    }
+
+    ArrayList<String> resources = new ArrayList<String>();
+    String prepared = rawPreference.replace("\n", ",").replace(";", ",");
+    String[] segments = prepared.split(",");
+    for (String segment : segments) {
+      if (segment == null) {
+        continue;
+      }
+      String trimmed = segment.trim();
+      if (!trimmed.isEmpty()) {
+        resources.add(trimmed);
+      }
+    }
+    return Collections.unmodifiableList(resources);
+  }
+
+  private void prefetchConfiguredResources(final List<String> resources, CordovaInterface cordovaInterface) {
+    if (resources == null || resources.isEmpty()) {
+      return;
+    }
+
+    Runnable work = new Runnable() {
+      @Override
+      public void run() {
+        for (String resource : resources) {
+          String targetUrl = buildPrefetchTargetUrl(resource);
+          if (targetUrl == null) {
+            continue;
+          }
+          prefetchResource(targetUrl);
+        }
+      }
+    };
+
+    if (cordovaInterface != null && cordovaInterface.getThreadPool() != null) {
+      try {
+        cordovaInterface.getThreadPool().execute(work);
+        return;
+      } catch (Exception ex) {
+        Log.d(TAG, "Unable to schedule prefetch work on Cordova thread pool", ex);
+      }
+    }
+
+    work.run();
+  }
+
+  private String buildPrefetchTargetUrl(String resource) {
+    if (resource == null) {
+      return null;
+    }
+    String trimmed = resource.trim();
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed;
+    }
+    if (CDV_LOCAL_SERVER == null || CDV_LOCAL_SERVER.isEmpty()) {
+      return null;
+    }
+    while (trimmed.startsWith("/")) {
+      trimmed = trimmed.substring(1);
+    }
+    if (trimmed.isEmpty()) {
+      return null;
+    }
+    return CDV_LOCAL_SERVER + "/" + trimmed;
+  }
+
+  private void prefetchResource(String url) {
+    if (url == null || url.trim().isEmpty()) {
+      return;
+    }
+
+    attemptLocalAssetPrefetch(url);
+  }
+
+  private boolean attemptLocalAssetPrefetch(String url) {
+    if (localServer == null) {
+      return false;
+    }
+
+    try {
+      Uri uri = Uri.parse(url);
+      if (uri == null) {
+        return false;
+      }
+      boolean warmed = localServer.prefetch(uri);
+      if (warmed) {
+        Log.d(TAG, "Prefetched resource via local asset handler: " + url);
+      }
+      return warmed;
+    } catch (Exception ex) {
+      Log.d(TAG, "Unable to prefetch resource via local server: " + url, ex);
+      return false;
+    }
   }
   private class ServerClient extends SystemWebViewClient {
     private ConfigXmlParser parser;
