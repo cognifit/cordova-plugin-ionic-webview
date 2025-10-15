@@ -54,6 +54,21 @@ public class AndroidProtocolHandler {
     return context.getAssets().open(path, AssetManager.ACCESS_STREAMING);
   }
 
+  public boolean prefetchAsset(String path) {
+    if (path == null || !shouldServeFromMemory(path)) {
+      return false;
+    }
+    InputStream cachedStream = openMemoryBackedAsset(path);
+    if (cachedStream == null) {
+      return false;
+    }
+    try {
+      cachedStream.close();
+    } catch (IOException ignored) {
+    }
+    return true;
+  }
+
   public InputStream openResource(Uri uri) {
     assert uri.getPath() != null;
     // The path must be of the form ".../asset_type/asset_name.ext".

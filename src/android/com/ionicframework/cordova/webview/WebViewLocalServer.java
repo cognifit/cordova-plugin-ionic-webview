@@ -242,6 +242,36 @@ public class WebViewLocalServer {
     }
   }
 
+  public boolean prefetch(Uri uri) {
+    if (uri == null) {
+      return false;
+    }
+
+    String authority = uri.getAuthority();
+    if (authority == null || !authority.equals(this.authority)) {
+      return false;
+    }
+
+    String path = uri.getPath();
+    if (path == null || path.length() == 0) {
+      return false;
+    }
+
+    if (path.startsWith(contentStart) || path.startsWith(fileStart)) {
+      return false;
+    }
+
+    if (!isAsset || basePath == null) {
+      return false;
+    }
+
+    String normalizedPath = path;
+    if (!normalizedPath.startsWith("/")) {
+      normalizedPath = "/" + normalizedPath;
+    }
+    return protocolHandler.prefetchAsset(basePath + normalizedPath);
+  }
+
   private boolean isLocalFile(Uri uri) {
     String path = uri.getPath();
     if (path.startsWith(contentStart) || path.startsWith(fileStart)) {

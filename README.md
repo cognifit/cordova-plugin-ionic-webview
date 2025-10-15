@@ -132,7 +132,6 @@ against the Cordova local server origin (for example `http://localhost`). When s
 call the native `prefetchResource` API to warm-up critical assets like the Rive WASM runtime before they are first requested by
 the web layer.
 
-
 [Android documentation](https://developer.android.com/reference/android/webkit/WebSettings.html#setMixedContentMode(int))
 
 
