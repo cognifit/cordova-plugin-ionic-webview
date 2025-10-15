@@ -119,21 +119,8 @@ newline separated and is combined with `CacheRiveAssetsInMemory`. Entries may om
 treated case-insensitively. When using this preference you can include additional file types such as `.wasm` to keep their
 contents ready for repeated loads.
 
-#### PrefetchResources
-
-```xml
-<preference name="PrefetchResources" value="build/rive.wasm, animations/intro.riv" />
-```
-
-Default value is empty.
-
-Defines a list of local or remote URLs that should be prefetched as soon as the WebView initialises. Relative paths are resolved
-against the Cordova local server origin (for example `http://localhost`). When supported by the Android WebView, the plugin will
-call the native `prefetchResource` API to warm-up critical assets like the Rive WASM runtime before they are first requested by
-the web layer.
-
-[Android documentation](https://developer.android.com/reference/android/webkit/WebSettings.html#setMixedContentMode(int))
-
+> **Note:** The stock Android WebView does not expose any public prefetch APIs. The plugin cannot force the WebView to
+> fetch assets ahead of time; the memory cache is populated lazily the first time a matching file is requested.
 
 ### iOS Preferences
 
