@@ -127,12 +127,10 @@ contents ready for repeated loads.
 
 Default value is empty.
 
-Defines a list of URLs that should be warmed as soon as the WebView initialises. Relative paths are resolved against the Cordova
-local server origin (for example `http://localhost`). Because the standard Android WebView does not expose a public prefetch API,
-the plugin touches matching local asset URLs instead, ensuring that any configured in-memory caches (for example `.riv` or `.wasm`
-files) are populated before the first request from the web layer. Remote HTTP(S) entries are ignored at the moment because the
-plugin cannot prefetch them without a dedicated networking stack.
-
+Defines a list of local or remote URLs that should be prefetched as soon as the WebView initialises. Relative paths are resolved
+against the Cordova local server origin (for example `http://localhost`). When supported by the Android WebView, the plugin will
+call the native `prefetchResource` API to warm-up critical assets like the Rive WASM runtime before they are first requested by
+the web layer.
 
 [Android documentation](https://developer.android.com/reference/android/webkit/WebSettings.html#setMixedContentMode(int))
 

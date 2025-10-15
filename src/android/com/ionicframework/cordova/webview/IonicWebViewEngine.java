@@ -27,6 +27,7 @@ import org.apache.cordova.engine.SystemWebViewClient;
 import org.apache.cordova.engine.SystemWebViewEngine;
 import org.apache.cordova.engine.SystemWebView;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
@@ -42,6 +43,9 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
   private String scheme;
   private static final String LAST_BINARY_VERSION_CODE = "lastBinaryVersionCode";
   private static final String LAST_BINARY_VERSION_NAME = "lastBinaryVersionName";
+  private Method prefetchResourceMethod;
+  private Class<?> prefetchResourceParameterType;
+  private boolean prefetchMethodResolved;
 
   /**
    * Used when created via reflection.
@@ -97,7 +101,7 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
 
     webView.setWebViewClient(new ServerClient(this, parser));
 
-    prefetchConfiguredResources(resourcesToPrefetch, cordova);
+    prefetchConfiguredResources(resourcesToPrefetch);
 
     super.init(parentWebView, cordova, client, resourceApi, pluginManager, nativeToJsMessageQueue);
     if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -210,34 +214,18 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     return Collections.unmodifiableList(resources);
   }
 
-  private void prefetchConfiguredResources(final List<String> resources, CordovaInterface cordovaInterface) {
+  private void prefetchConfiguredResources(List<String> resources) {
     if (resources == null || resources.isEmpty()) {
       return;
     }
 
-    Runnable work = new Runnable() {
-      @Override
-      public void run() {
-        for (String resource : resources) {
-          String targetUrl = buildPrefetchTargetUrl(resource);
-          if (targetUrl == null) {
-            continue;
-          }
-          prefetchResource(targetUrl);
-        }
+    for (String resource : resources) {
+      String targetUrl = buildPrefetchTargetUrl(resource);
+      if (targetUrl == null) {
+        continue;
       }
-    };
-
-    if (cordovaInterface != null && cordovaInterface.getThreadPool() != null) {
-      try {
-        cordovaInterface.getThreadPool().execute(work);
-        return;
-      } catch (Exception ex) {
-        Log.d(TAG, "Unable to schedule prefetch work on Cordova thread pool", ex);
-      }
+      invokePrefetchResource(targetUrl);
     }
-
-    work.run();
   }
 
   private String buildPrefetchTargetUrl(String resource) {
@@ -263,32 +251,48 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     return CDV_LOCAL_SERVER + "/" + trimmed;
   }
 
-  private void prefetchResource(String url) {
+  private void resolvePrefetchMethod() {
+    if (prefetchMethodResolved) {
+      return;
+    }
+    prefetchMethodResolved = true;
+    Method[] methods = WebView.class.getMethods();
+    for (Method method : methods) {
+      if (method == null) {
+        continue;
+      }
+      if (!"prefetchResource".equals(method.getName())) {
+        continue;
+      }
+      Class<?>[] parameterTypes = method.getParameterTypes();
+      if (parameterTypes == null || parameterTypes.length != 1) {
+        continue;
+      }
+      prefetchResourceMethod = method;
+      prefetchResourceParameterType = parameterTypes[0];
+      break;
+    }
+  }
+
+  private void invokePrefetchResource(String url) {
     if (url == null || url.trim().isEmpty()) {
       return;
     }
-
-    attemptLocalAssetPrefetch(url);
-  }
-
-  private boolean attemptLocalAssetPrefetch(String url) {
-    if (localServer == null) {
-      return false;
+    resolvePrefetchMethod();
+    if (prefetchResourceMethod == null || prefetchResourceParameterType == null) {
+      Log.d(TAG, "prefetchResource API not available; skipping prefetch for " + url);
+      return;
     }
-
     try {
-      Uri uri = Uri.parse(url);
-      if (uri == null) {
-        return false;
+      if (String.class.equals(prefetchResourceParameterType)) {
+        prefetchResourceMethod.invoke(webView, url);
+      } else if (Uri.class.equals(prefetchResourceParameterType)) {
+        prefetchResourceMethod.invoke(webView, Uri.parse(url));
+      } else {
+        Log.d(TAG, "Unsupported prefetchResource parameter type: " + prefetchResourceParameterType.getName());
       }
-      boolean warmed = localServer.prefetch(uri);
-      if (warmed) {
-        Log.d(TAG, "Prefetched resource via local asset handler: " + url);
-      }
-      return warmed;
     } catch (Exception ex) {
-      Log.d(TAG, "Unable to prefetch resource via local server: " + url, ex);
-      return false;
+      Log.w(TAG, "Unable to prefetch resource " + url, ex);
     }
   }
   private class ServerClient extends SystemWebViewClient {
