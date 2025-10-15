@@ -10,23 +10,47 @@ import android.net.Uri;
 import android.util.Log;
 import android.util.TypedValue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 
 public class AndroidProtocolHandler {
   private static final String TAG = "AndroidProtocolHandler";
 
   private Context context;
+  private final Map<String, byte[]> memoryBackedAssetCache;
+  private final Set<String> memoryCachedAssetExtensions;
 
   public AndroidProtocolHandler(Context context) {
+    this(context, Collections.<String>emptySet());
+  }
+
+  public AndroidProtocolHandler(Context context, Set<String> memoryCachedAssetExtensions) {
     this.context = context;
+    this.memoryBackedAssetCache = new ConcurrentHashMap<String, byte[]>();
+    if (memoryCachedAssetExtensions == null) {
+      this.memoryCachedAssetExtensions = Collections.<String>emptySet();
+    } else {
+      this.memoryCachedAssetExtensions = memoryCachedAssetExtensions;
+    }
   }
 
   public InputStream openAsset(String path) throws IOException {
+    if (shouldServeFromMemory(path)) {
+      InputStream cached = openMemoryBackedAsset(path);
+      if (cached != null) {
+        return cached;
+      }
+    }
     return context.getAssets().open(path, AssetManager.ACCESS_STREAMING);
   }
 
@@ -103,5 +127,65 @@ public class AndroidProtocolHandler {
     TypedValue value = new TypedValue();
     context.getResources().getValue(fieldId, value, true);
     return value.type;
+  }
+
+  private boolean shouldServeFromMemory(String path) {
+    if (memoryCachedAssetExtensions == null || memoryCachedAssetExtensions.isEmpty() || path == null) {
+      return false;
+    }
+    for (String extension : memoryCachedAssetExtensions) {
+      if (extension != null && path.endsWith(extension)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private InputStream openMemoryBackedAsset(String path) {
+    try {
+      byte[] cached = memoryBackedAssetCache.get(path);
+      if (cached == null) {
+        cached = readAssetIntoMemory(path);
+        if (cached != null) {
+          memoryBackedAssetCache.put(path, cached);
+        }
+      }
+      if (cached == null) {
+        return null;
+      }
+      return new ByteArrayInputStream(cached);
+    } catch (IOException e) {
+      Log.e(TAG, "Unable to cache asset in memory: " + path, e);
+      return null;
+    }
+  }
+
+  private byte[] readAssetIntoMemory(String path) throws IOException {
+    AssetManager manager = context.getAssets();
+    InputStream assetStream = null;
+    ByteArrayOutputStream buffer = null;
+    try {
+      assetStream = manager.open(path, AssetManager.ACCESS_STREAMING);
+      buffer = new ByteArrayOutputStream();
+      byte[] temp = new byte[16 * 1024];
+      int read;
+      while ((read = assetStream.read(temp)) != -1) {
+        buffer.write(temp, 0, read);
+      }
+      return buffer.toByteArray();
+    } finally {
+      if (assetStream != null) {
+        try {
+          assetStream.close();
+        } catch (IOException ignored) {
+        }
+      }
+      if (buffer != null) {
+        try {
+          buffer.close();
+        } catch (IOException ignored) {
+        }
+      }
+    }
   }
 }

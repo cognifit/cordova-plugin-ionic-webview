@@ -6,7 +6,6 @@ import android.content.SharedPreferences;
 import android.content.pm.PackageInfo;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
-import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 import android.webkit.ServiceWorkerController;
@@ -26,6 +25,11 @@ import org.apache.cordova.PluginManager;
 import org.apache.cordova.engine.SystemWebViewClient;
 import org.apache.cordova.engine.SystemWebViewEngine;
 import org.apache.cordova.engine.SystemWebView;
+
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Set;
 
 public class IonicWebViewEngine extends SystemWebViewEngine {
   public static final String TAG = "IonicWebViewEngine";
@@ -65,7 +69,11 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
     scheme = preferences.getString("Scheme", "http");
     CDV_LOCAL_SERVER = scheme + "://" + hostname;
 
-    localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme);
+    boolean cacheRiveAssetsInMemory = preferences.getBoolean("CacheRiveAssetsInMemory", false);
+    Set<String> memoryCachedExtensions = parseMemoryCachedExtensions(
+            preferences.getString("MemoryCachedAssetExtensions", null), cacheRiveAssetsInMemory);
+
+    localServer = new WebViewLocalServer(cordova.getActivity(), hostname, true, parser, scheme, memoryCachedExtensions);
     SharedPreferences appPrefs = cordova.getActivity().getApplicationContext().getSharedPreferences(IonicWebView.WEBVIEW_PREFS_NAME, Context.MODE_PRIVATE);
     String folderName = appPrefs.getString("wwwFolderName", "www");  // "www" is the default
 
@@ -140,6 +148,42 @@ public class IonicWebViewEngine extends SystemWebViewEngine {
   private boolean isDeployDisabled() {
     return preferences.getBoolean("DisableDeploy", false);
   }
+
+  private Set<String> parseMemoryCachedExtensions(String rawPreference, boolean cacheRiveAssetsInMemory) {
+    if ((rawPreference == null || rawPreference.trim().isEmpty()) && !cacheRiveAssetsInMemory) {
+      return Collections.<String>emptySet();
+    }
+
+    LinkedHashSet<String> normalized = new LinkedHashSet<String>();
+    if (cacheRiveAssetsInMemory) {
+      normalized.add(".riv");
+    }
+
+    if (rawPreference != null) {
+      String prepared = rawPreference.replace("\n", ",").replace(";", ",");
+      String[] segments = prepared.split(",");
+      for (String segment : segments) {
+        if (segment == null) {
+          continue;
+        }
+        String trimmed = segment.trim();
+        if (trimmed.isEmpty()) {
+          continue;
+        }
+        if (!trimmed.startsWith(".")) {
+          trimmed = "." + trimmed;
+        }
+        normalized.add(trimmed.toLowerCase(Locale.ROOT));
+      }
+    }
+
+    if (normalized.isEmpty()) {
+      return Collections.<String>emptySet();
+    }
+
+    return Collections.unmodifiableSet(normalized);
+  }
+
   private class ServerClient extends SystemWebViewClient {
     private ConfigXmlParser parser;
 
