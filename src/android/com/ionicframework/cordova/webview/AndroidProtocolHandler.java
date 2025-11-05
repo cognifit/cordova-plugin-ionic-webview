@@ -14,6 +14,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collections;
@@ -51,7 +52,8 @@ public class AndroidProtocolHandler {
         return cached;
       }
     }
-    return context.getAssets().open(path, AssetManager.ACCESS_STREAMING);
+
+    return openAssetStream(context.getAssets(), path, AssetManager.ACCESS_STREAMING);
   }
 
   public boolean prefetchAsset(String path) {
@@ -180,7 +182,7 @@ public class AndroidProtocolHandler {
     InputStream assetStream = null;
     ByteArrayOutputStream buffer = null;
     try {
-      assetStream = manager.open(path, AssetManager.ACCESS_STREAMING);
+      assetStream = openAssetStream(manager, path, AssetManager.ACCESS_STREAMING);
       buffer = new ByteArrayOutputStream();
       byte[] temp = new byte[16 * 1024];
       int read;
@@ -201,6 +203,22 @@ public class AndroidProtocolHandler {
         } catch (IOException ignored) {
         }
       }
+    }
+  }
+
+  private InputStream openAssetStream(AssetManager manager, String path, int accessMode) throws IOException {
+    try {
+      return manager.open(path, accessMode);
+    } catch (FileNotFoundException missingKidsAsset) {
+      if (path != null && !path.startsWith("www/")) {
+        String fallbackPath = path.replaceFirst("^www_[^/]+/", "www/");
+        try {
+          return manager.open(fallbackPath, accessMode);
+        } catch (Exception exception) {
+          throw exception;
+        }
+      }
+      throw missingKidsAsset;
     }
   }
 }
