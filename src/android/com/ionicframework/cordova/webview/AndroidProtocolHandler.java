@@ -17,11 +17,14 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 public class AndroidProtocolHandler {
@@ -207,11 +210,12 @@ public class AndroidProtocolHandler {
   }
 
   private InputStream openAssetStream(AssetManager manager, String path, int accessMode) throws IOException {
+    String normalizedPath = normalizePath(path);
     try {
-      return manager.open(path, accessMode);
+      return manager.open(normalizedPath, accessMode);
     } catch (FileNotFoundException missingKidsAsset) {
-      if (path != null && !path.startsWith("www/")) {
-        String fallbackPath = path.replaceFirst("^www_[^/]+/", "www/");
+      if (normalizedPath != null && !normalizedPath.startsWith("www/")) {
+        String fallbackPath = normalizedPath.replaceFirst("^www_[^/]+/", "www/");
         try {
           return manager.open(fallbackPath, accessMode);
         } catch (Exception exception) {
@@ -220,5 +224,24 @@ public class AndroidProtocolHandler {
       }
       throw missingKidsAsset;
     }
+  }
+
+  private static String normalizePath(String path) {
+    if (path == null) return null;
+
+    // 1) www_{something}/PATH_TRAVERSAL/{somePath}  ->  www/{somePath}
+    Matcher m1 = Pattern.compile("^www_[^/]+/PATH_TRAVERSAL/(.+)$").matcher(path);
+    if (m1.find()) {
+      return "www/" + m1.group(1);
+    }
+
+    // 2) www/PATH_TRAVERSAL_{suffix}/{somePath}  ->  www_{suffix}/{somePath}
+    Matcher m2 = Pattern.compile("^www/PATH_TRAVERSAL_([^/]+)/(.+)$").matcher(path);
+    if (m2.find()) {
+      return "www_" + m2.group(1) + "/" + m2.group(2);
+    }
+
+    // No rewrite
+    return path;
   }
 }
