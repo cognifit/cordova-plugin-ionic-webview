@@ -23,12 +23,21 @@
     NSURL * url = urlSchemeTask.request.URL;
     NSString * stringToLoad = url.path;
     NSString * scheme = url.scheme;
-
+    
     if ([scheme isEqualToString:self.scheme]) {
         if ([stringToLoad hasPrefix:@"/_app_file_"]) {
             startPath = [stringToLoad stringByReplacingOccurrencesOfString:@"/_app_file_" withString:@""];
         } else {
-            startPath = self.basePath ? self.basePath : @"";
+            // Base path like ".../www" or ".../www_kids"
+            NSString *base = self.basePath ? self.basePath : @"";
+
+            // --- Apply traversal normalization (mirrors Android rules) ---
+            NSString *mutableBase = [base copy];
+            NSString *mutableReq  = [stringToLoad copy];
+            AdjustBaseAndPathForTraversal(&mutableBase, &mutableReq);
+            startPath = mutableBase;
+            stringToLoad = mutableReq;
+          
             if ([stringToLoad isEqualToString:@""] || [url.pathExtension isEqualToString:@""]) {
                 startPath = [startPath stringByAppendingString:@"/index.html"];
             } else {
@@ -61,7 +70,6 @@
     [urlSchemeTask didReceiveResponse:response];
     [urlSchemeTask didReceiveData:data];
     [urlSchemeTask didFinish];
-
 }
 
 - (void)webView:(nonnull WKWebView *)webView stopURLSchemeTask:(nonnull id<WKURLSchemeTask>)urlSchemeTask
@@ -88,5 +96,58 @@
     return NO;
 }
 
+/// Rewrites base directory and request path to mirror Android rules.
+/// If basePath ends with .../www_something and path starts with /PATH_TRAVERSAL/ -> switch to .../www
+/// If basePath ends with .../www and path starts with /PATH_TRAVERSAL_{suffix}/ -> switch to .../www_{suffix}
+static void AdjustBaseAndPathForTraversal(NSString **basePathRef, NSString **stringToLoadRef) {
+    if (basePathRef == nil || *basePathRef == nil || stringToLoadRef == nil || *stringToLoadRef == nil) return;
+
+    NSString *basePath = *basePathRef;
+    NSString *reqPath  = *stringToLoadRef;  // begins with "/..."
+
+    // Extract the current top dir ("www" or "www_kids", etc.)
+    NSString *baseDirParent = [basePath stringByDeletingLastPathComponent];
+    NSString *top = [basePath lastPathComponent]; // e.g. "www" or "www_kids"
+
+    // Rule A (Android #1 analogue):
+    // www_{something}/PATH_TRAVERSAL/{somePath} -> www/{somePath}
+    // iOS analogue: if basePath ends with www_{something} AND request starts with /PATH_TRAVERSAL/...
+    if ([top hasPrefix:@"www_"] && [reqPath hasPrefix:@"/PATH_TRAVERSAL/"]) {
+        // switch to ".../www"
+        NSString *newTop = @"www";
+        NSString *newBase = [baseDirParent stringByAppendingPathComponent:newTop];
+
+        // strip the "/PATH_TRAVERSAL/" prefix from the request path
+        NSString *stripped = [reqPath stringByReplacingOccurrencesOfString:@"/PATH_TRAVERSAL/" withString:@"/"];
+
+        *basePathRef = newBase;
+        *stringToLoadRef = stripped;
+        return;
+    }
+
+    // Rule B (Android #2 analogue):
+    // www/PATH_TRAVERSAL_{suffix}/{somePath} -> www_{suffix}/{somePath}
+    // iOS analogue: if basePath ends with www AND request matches ^/PATH_TRAVERSAL_([^/]+)/(.+)$
+    if ([top isEqualToString:@"www"]) {
+        NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:@"^/PATH_TRAVERSAL_([^/]+)/(.*)$"
+                                                                            options:0 error:nil];
+        NSTextCheckingResult *m = [re firstMatchInString:reqPath options:0 range:NSMakeRange(0, reqPath.length)];
+        if (m) {
+            NSRange suffixR = [m rangeAtIndex:1];
+            NSRange restR   = [m rangeAtIndex:2];
+            NSString *suffix = [reqPath substringWithRange:suffixR];   // e.g. "kids", "clowns"
+            NSString *rest   = [reqPath substringWithRange:restR];     // remaining path
+
+            NSString *newTop  = [NSString stringWithFormat:@"www_%@", suffix]; // www_kids, www_clowns, etc.
+            NSString *newBase = [baseDirParent stringByAppendingPathComponent:newTop];
+
+            *basePathRef = newBase;
+            *stringToLoadRef = [@"/" stringByAppendingString:rest];
+            return;
+        }
+    }
+
+    // Otherwise, no rewrite.
+}
 
 @end
